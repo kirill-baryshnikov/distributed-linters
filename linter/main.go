@@ -19,10 +19,10 @@ func handleLint(responseWriter http.ResponseWriter,
     requestBody, _ := ioutil.ReadAll(request.Body)
     var fileToLint SourceFile
     json.Unmarshal(requestBody, &fileToLint)
-    log.Println("Received content for linting:" + fileToLint.Content)
+    log.Println("Received content for linting:\n" + fileToLint.Content)
  
-    lintedFile := SourceFile{lintSourceCode(fileToLint.Content)}
-    log.Println("Content after linting" + lintedFile.Content)
+    lintedFile := SourceFile { lintSourceCode(fileToLint.Content) }
+    log.Println("Content after linting:\n" + lintedFile.Content)
 
     json.NewEncoder(responseWriter).Encode(lintedFile)
 }
@@ -37,7 +37,7 @@ func serve() {
     myRouter.HandleFunc("/lint", handleLint).Methods("POST")
     myRouter.HandleFunc("/healthy", handleHealthy).Methods("GET")
 
-    log.Println("Server starting on port 8136.")
+    log.Println("Linter service listening on port 8136.")
     log.Fatal(http.ListenAndServe(":8136", myRouter))
 }
 
