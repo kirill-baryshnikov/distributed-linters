@@ -8,6 +8,8 @@ import (
     "github.com/gorilla/mux"
 )
 
+const CONTENT_LENGTH_LIMIT = 60000
+
 func handleLintJava(responseWriter http.ResponseWriter, request *http.Request) {
     log.Println("Endpoint hit: /lint/java")
     handleLint(responseWriter, request, Java)
@@ -22,7 +24,12 @@ func handleLint(responseWriter http.ResponseWriter, request *http.Request,
 				language Language) {
 	requestBody, _ := ioutil.ReadAll(request.Body)
     var fileToLint SourceFile
-    json.Unmarshal(requestBody, &fileToLint)
+    err := json.Unmarshal(requestBody, &fileToLint)
+    if err != nil || fileToLint.Content == "" || len(fileToLint.Content) > CONTENT_LENGTH_LIMIT {
+    	responseWriter.WriteHeader(http.StatusBadRequest)
+    	return
+    }
+
     log.Println("Received content for linting:\n" + fileToLint.Content)
  
     lintedFile := SourceFile { lintSourceCode(fileToLint.Content, language) }
