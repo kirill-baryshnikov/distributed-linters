@@ -4,19 +4,28 @@ import (
     "fmt"
     "log"
     "net/http"
+    "github.com/gorilla/mux"
 )
 
-func homePage(responseWriter http.ResponseWriter, 
+func handleLint(responseWriter http.ResponseWriter, 
               request *http.Request){
-    fmt.Fprintf(responseWriter, "Hello world!")
-    fmt.Println("Endpoint hit: homePage")
+    fmt.Fprintf(responseWriter, "Hi, I'm linting!")
+    fmt.Println("Endpoint hit: /lint")
 }
 
-func handleRequests() {
-    http.HandleFunc("/", homePage)
-    log.Fatal(http.ListenAndServe(":8136", nil))
+func handleHealthy(responseWriter http.ResponseWriter, 
+              request *http.Request){
+    fmt.Fprintf(responseWriter, "Hi, I'm healthy!")
+    fmt.Println("Endpoint hit: /healthy")
+}
+
+func serve() {
+    myRouter := mux.NewRouter().StrictSlash(true)
+    myRouter.HandleFunc("/lint", handleLint)
+    myRouter.HandleFunc("/healthy", handleHealthy)
+    log.Fatal(http.ListenAndServe(":8136", myRouter))
 }
 
 func main() {
-    handleRequests()
+    serve()
 }
