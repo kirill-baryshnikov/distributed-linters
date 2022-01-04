@@ -2,6 +2,7 @@ package main
 
 import (
     "log"
+    "fmt"
     "bytes"
     "net/http"
     "sync"
@@ -91,16 +92,16 @@ func (m* Manager) versionUpdateStep() {
 
     for _, worker := range m.workers {
         for _, version := range m.versions {
+            if version == worker.version {
+                // This worker has version older than target_version, it's ok
+                good_workers = append(good_workers, worker)
+                break;
+            }
+
             if version == m.target_version {
                 // This worker's version is too new!
                 // It should be removed.
                 go shutdownWorker(worker)
-                break;
-            }
-
-            if version == worker.version {
-                // This worker has version older than target_version, it's ok
-                good_workers = append(good_workers, worker)
                 break;
             }
         }
@@ -168,6 +169,7 @@ func (m* Manager) versionUpdateStep() {
 }
 
 func (m* Manager) removeWorker(worker_index int) {
+    fmt.Println("Removing worker with index " + strconv.Itoa(worker_index) + " and version " + m.workers[worker_index].version)
     last_index := len(m.workers) - 1
 
     m.workers[worker_index], m.workers[last_index] = m.workers[last_index], m.workers[worker_index]
@@ -179,7 +181,15 @@ func startupWorker(m* Manager, worker* Worker) {
 
     binary_to_run := worker.version
 
-    exec.Command(binary_to_run, "--port", strconv.Itoa(randomPort))
+    fmt.Println("Starting new worker on port " + strconv.Itoa(randomPort))
+
+    cmd := exec.Command(binary_to_run, "--port", strconv.Itoa(randomPort))
+    go func() {
+        err := cmd.Run()
+        if err != nil {
+            fmt.Println("Error running worker", err)
+        }
+    }()
 
     m.mutex.Lock()
     defer m.mutex.Unlock()
@@ -189,6 +199,7 @@ func startupWorker(m* Manager, worker* Worker) {
 }
 
 func shutdownWorker(worker *Worker) {
+    fmt.Println("Shutting down worker with address " + worker.address)
     http.Get(worker.address + "/shutdown")
 }
 
@@ -262,7 +273,7 @@ type SourceFile struct {
 const CONTENT_LENGTH_LIMIT = 60000
 
 type LintResponse struct {
-    result bool `json:"result"`
+    result int `json:"result"`
 }
 
 // /v1/lint
@@ -281,6 +292,8 @@ func handle_lint(w http.ResponseWriter, r *http.Request, m* Manager, language st
         w.WriteHeader(http.StatusInternalServerError)
         return
     }
+    
+    fmt.Println("Lint result: " + strconv.FormatBool(is_good))
 
     response := LintResponse {
         result: is_good,
@@ -382,8 +395,8 @@ func handleRequests(python_manager *Manager, java_manager *Manager) {
 }
 
 func main() {
-    var python_manager Manager = NewManager("python-linter-1.0")
-    var java_manager Manager = NewManager("java-linter-1.0")
+    var python_manager Manager = NewManager("bin/python-linter-1.0")
+    var java_manager Manager = NewManager("bin/java-linter-1.0")
 
     python_manager.startPeriodicVersionUpdates()
     java_manager.startPeriodicVersionUpdates()
