@@ -183,7 +183,8 @@ func startupWorker(m* Manager, worker* Worker) {
 
     m.mutex.Lock()
     defer m.mutex.Unlock()
-    
+
+    worker.address = "http://127.0.0.1:" + strconv.Itoa(randomPort)
     worker.state = workerStateRunning
 }
 
