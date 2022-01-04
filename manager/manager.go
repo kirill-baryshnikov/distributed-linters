@@ -10,6 +10,7 @@ import (
     "time"
     "io/ioutil"
     "encoding/json"
+    "os/exec"
 )
 
 const (
@@ -173,7 +174,11 @@ func (m* Manager) removeWorker(worker_index int) {
 }
 
 func startupWorker(m* Manager, worker* Worker) {
-    // TODO - start the process/docker whatever
+    randomPort := 10001 + rand.Intn(20000)
+
+    binary_to_run := worker.version
+
+    exec.Command(binary_to_run, "--port", string(randomPort))
 
     m.mutex.Lock()
     defer m.mutex.Unlock()
@@ -182,7 +187,7 @@ func startupWorker(m* Manager, worker* Worker) {
 }
 
 func shutdownWorker(worker Worker) {
-    // TODO
+    http.Get(worker.address + "/shutdown")
 }
 
 func (m* Manager) LintCode(code string, language string) (bool, error) {
