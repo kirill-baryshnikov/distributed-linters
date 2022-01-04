@@ -68,6 +68,9 @@ func (m* Manager) NewVersion(version string) {
 }
 
 func (m* Manager) RollbackVersion(rollbackTo string) {
+    m.mutex.Lock()
+    defer m.mutex.Unlock()
+
     m.target_version = rollbackTo
     
     // versionUpdateStep will take care of removing bad workers
@@ -137,6 +140,9 @@ func (m* Manager) versionUpdateStep() {
         new_ratio = 1.0
     }
 
+    m.target_version_ratio = new_ratio
+    fmt.Printf("Rollout - latest version ratio: %f\n", m.target_version_ratio)
+
     min_cur_version_workers := int(new_ratio * float32(m.target_workers_num))
 
     current_version_workers := 0
@@ -145,6 +151,10 @@ func (m* Manager) versionUpdateStep() {
             current_version_workers += 1
         }
     }
+
+    fmt.Println("cur version " + m.target_version)
+    fmt.Println("current version workers: " + strconv.Itoa(current_version_workers))
+    fmt.Println("min version workers: " + strconv.Itoa(min_cur_version_workers))
 
     // Update workers until the requirement is met
     for current_version_workers < min_cur_version_workers {
@@ -170,10 +180,14 @@ func (m* Manager) versionUpdateStep() {
 
 func (m* Manager) removeWorker(worker_index int) {
     fmt.Println("Removing worker with index " + strconv.Itoa(worker_index) + " and version " + m.workers[worker_index].version)
+    var to_remove *Worker = m.workers[worker_index]
+
     last_index := len(m.workers) - 1
 
     m.workers[worker_index], m.workers[last_index] = m.workers[last_index], m.workers[worker_index]
     m.workers = m.workers[:last_index]
+
+    go shutdownWorker(to_remove)
 }
 
 func startupWorker(m* Manager, worker* Worker) {
