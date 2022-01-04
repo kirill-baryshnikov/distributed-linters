@@ -6,6 +6,9 @@ import (
     "encoding/json"
     "net/http"
     "github.com/gorilla/mux"
+    "os"
+    "strconv"
+    "fmt"
 )
 
 const CONTENT_LENGTH_LIMIT = 60000
@@ -41,16 +44,28 @@ func handleHealthy(responseWriter http.ResponseWriter, request *http.Request) {
     log.Println("Endpoint hit: /healthy")
 }
 
-func serve() {
+func serve(port int) {
     myRouter := mux.NewRouter().StrictSlash(true)
     myRouter.HandleFunc("/lint/java", handleLintJava).Methods("POST")
     myRouter.HandleFunc("/lint/python", handleLintPython).Methods("POST")
     myRouter.HandleFunc("/healthy", handleHealthy).Methods("GET")
+    myRouter.HandleFunc("/shutdown", func(w http.ResponseWriter, r *http.Request){ os.Exit(0) })
 
-    log.Println("Linter service listening on port 8136.")
-    log.Fatal(http.ListenAndServe(":8136", myRouter))
+    log.Println("Linter service listening.")
+    log.Fatal(http.ListenAndServe(":" + strconv.Itoa(port), myRouter))
 }
 
 func main() {
-    serve()
+    if len(os.Args) != 3 || os.Args[1] != "--port" {
+        fmt.Println("Bad arguments - usage: ./linter --port <listen port>")
+        os.Exit(1)
+    }
+
+    port, err := strconv.Atoi(os.Args[2])
+    if err != nil {
+        fmt.Println("Bad arguments - usage: ./linter --port <listen port>")
+        os.Exit(1)
+    }
+
+    serve(port)
 }
