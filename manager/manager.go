@@ -273,7 +273,7 @@ type SourceFile struct {
 const CONTENT_LENGTH_LIMIT = 60000
 
 type LintResponse struct {
-    result int `json:"result"`
+    Result bool `json:"result"`
 }
 
 // /v1/lint
@@ -292,11 +292,9 @@ func handle_lint(w http.ResponseWriter, r *http.Request, m* Manager, language st
         w.WriteHeader(http.StatusInternalServerError)
         return
     }
-    
-    fmt.Println("Lint result: " + strconv.FormatBool(is_good))
 
     response := LintResponse {
-        result: is_good,
+        Result: is_good,
     }
 
     json.NewEncoder(w).Encode(response)
