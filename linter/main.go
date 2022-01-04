@@ -6,6 +6,7 @@ import (
     "encoding/json"
     "net/http"
     "github.com/gorilla/mux"
+    "os"
 )
 
 const CONTENT_LENGTH_LIMIT = 60000
@@ -46,6 +47,7 @@ func serve() {
     myRouter.HandleFunc("/lint/java", handleLintJava).Methods("POST")
     myRouter.HandleFunc("/lint/python", handleLintPython).Methods("POST")
     myRouter.HandleFunc("/healthy", handleHealthy).Methods("GET")
+    myRouter.HandleFunc("/shutdown", func(w http.ResponseWriter, r *http.Request){ os.Exit(0) })
 
     log.Println("Linter service listening on port 8136.")
     log.Fatal(http.ListenAndServe(":8136", myRouter))
