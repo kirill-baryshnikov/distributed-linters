@@ -2,11 +2,14 @@ package main
 
 import (
     "log"
+    "bytes"
     "net/http"
     "sync"
     "math/rand"
     "errors"
     "time"
+    "io/ioutil"
+    "encoding/json"
 )
 
 const (
@@ -182,15 +185,47 @@ func shutdownWorker(worker Worker) {
     // TODO
 }
 
-func (m* Manager) LintCode(code string) (bool, error) {
-    _, err := m.chooseWorker()
+func (m* Manager) LintCode(code string, language string) (bool, error) {
+    worker, err := m.chooseWorker()
 
     if err != nil {
         return false, err
     }
 
-    // TODO: Send request and return result
-    return false, nil
+    to_lint := SourceFile {
+        Content: code,
+    }
+
+    marshalled, _ := json.Marshal(to_lint)
+    post_body := bytes.NewBuffer(marshalled)
+
+    response, err := http.Post(worker.address + "/lint/" + language, "application/json", post_body)
+
+    if err != nil {
+        return false, err
+    }
+
+    defer response.Body.Close()
+
+    // Read the response body
+    body, err := ioutil.ReadAll(response.Body)
+    if err != nil {
+        log.Fatalln(err)
+    }
+
+    var responseFile SourceFile
+
+    err = json.Unmarshal(body, &responseFile)
+    if err != nil{
+        return false, err
+    }
+
+    if responseFile.Content == code {
+        // Code hasn't changed - everything is alright
+        return true, nil
+    } else {
+        return false, nil
+    }
 }
 
 func (m* Manager) chooseWorker() (*Worker, error) {
@@ -213,10 +248,38 @@ func (m* Manager) chooseWorker() (*Worker, error) {
     return &possibleWorkers[randomIndex], nil
 }
 
+type SourceFile struct {
+    Content string `json:"content"`
+}
+
+const CONTENT_LENGTH_LIMIT = 60000
+
+type LintResponse struct {
+    result bool `json:"result"`
+}
+
 // /v1/lint
-func handle_lint(w http.ResponseWriter, r *http.Request, m* Manager) {
-    var code string = "code"
-    m.LintCode(code)
+func handle_lint(w http.ResponseWriter, r *http.Request, m* Manager, language string) {
+    requestBody, _ := ioutil.ReadAll(r.Body)
+    var fileToLint SourceFile
+    err := json.Unmarshal(requestBody, &fileToLint)
+    if err != nil || fileToLint.Content == "" || len(fileToLint.Content) > CONTENT_LENGTH_LIMIT {
+        w.WriteHeader(http.StatusBadRequest)
+        return
+    }
+
+    is_good, err := m.LintCode(fileToLint.Content, language)
+
+    if err != nil {
+        w.WriteHeader(http.StatusInternalServerError)
+        return
+    }
+
+    response := LintResponse {
+        result: is_good,
+    }
+
+    json.NewEncoder(w).Encode(response)
 }
 
 // /v1/admin/workers
@@ -237,27 +300,43 @@ func handle_admin_balance(w http.ResponseWriter, r *http.Request, m* Manager) {
     // Will be added in the future
 }
 
+type VersionJson struct {
+    Version string `json:"version"`
+}
+
 // /v1/admin/version
 func handle_admin_version(w http.ResponseWriter, r *http.Request, m* Manager) {
-    var new_version string = "TODO"
+    requestBody, _ := ioutil.ReadAll(r.Body)
+    var new_version VersionJson
+    err := json.Unmarshal(requestBody, &new_version)
+    if err != nil {
+        w.WriteHeader(http.StatusBadRequest)
+        return
+    }
 
-    m.NewVersion(new_version)
+    m.NewVersion(new_version.Version)
 }
 
 // /v1/admin/rollback
 func handle_admin_rollback(w http.ResponseWriter, r *http.Request, m* Manager) {
-    var old_version string = "TODO"
+    requestBody, _ := ioutil.ReadAll(r.Body)
+    var old_version VersionJson
+    err := json.Unmarshal(requestBody, &old_version)
+    if err != nil {
+        w.WriteHeader(http.StatusBadRequest)
+        return
+    }
 
-    m.RollbackVersion(old_version)
+    m.RollbackVersion(old_version.Version)
 }
 
 func handleRequests(python_manager *Manager, java_manager *Manager) {
     http.HandleFunc("/v1/lint/python", func(w http.ResponseWriter, r *http.Request) {
-        handle_lint(w, r, python_manager)
+        handle_lint(w, r, python_manager, "python")
     })
 
     http.HandleFunc("/v1/lint/java", func(w http.ResponseWriter, r *http.Request) {
-        handle_lint(w, r, java_manager)
+        handle_lint(w, r, java_manager, "java")
     })
 
     http.HandleFunc("/v1/admin/workers/python", func(w http.ResponseWriter, r *http.Request) {
