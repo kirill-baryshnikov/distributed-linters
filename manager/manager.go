@@ -28,7 +28,7 @@ type Worker struct {
 type Manager struct {
     mutex sync.Mutex
 
-    workers []Worker
+    workers []*Worker
     target_workers_num int
 
     versions []string
@@ -39,7 +39,7 @@ type Manager struct {
 func NewManager(intial_version string) Manager {
     return Manager {
         mutex: sync.Mutex{},
-        workers: make([]Worker, 0),
+        workers: make([]*Worker, 0),
         target_workers_num: 4,
         versions: []string{intial_version},
         target_version: intial_version,
@@ -87,7 +87,7 @@ func (m* Manager) versionUpdateStep() {
 
     // First remove any workers that have newer version than desired
     // In case of rollback this will remove most workers, maybe all
-    good_workers := make([]Worker, 0)
+    good_workers := make([]*Worker, 0)
 
     for _, worker := range m.workers {
         for _, version := range m.versions {
@@ -115,7 +115,7 @@ func (m* Manager) versionUpdateStep() {
             version: m.target_version,
             state: workerStateCreating,
         }
-        m.workers = append(m.workers, new_worker)
+        m.workers = append(m.workers, &new_worker)
         go startupWorker(m, &new_worker)
     }
 
@@ -159,7 +159,7 @@ func (m* Manager) versionUpdateStep() {
             version: m.target_version,
             state: workerStateCreating,
         }
-        m.workers = append(m.workers, new_worker)
+        m.workers = append(m.workers, &new_worker)
 
         go startupWorker(m, &new_worker)
 
@@ -188,7 +188,7 @@ func startupWorker(m* Manager, worker* Worker) {
     worker.state = workerStateRunning
 }
 
-func shutdownWorker(worker Worker) {
+func shutdownWorker(worker *Worker) {
     http.Get(worker.address + "/shutdown")
 }
 
@@ -239,7 +239,7 @@ func (m* Manager) chooseWorker() (*Worker, error) {
     m.mutex.Lock()
     defer m.mutex.Unlock()
 
-    possibleWorkers := make([]Worker, 0);
+    possibleWorkers := make([]*Worker, 0);
 
     for _, worker := range m.workers {
         if worker.state == workerStateRunning {
@@ -252,7 +252,7 @@ func (m* Manager) chooseWorker() (*Worker, error) {
     }
 
     randomIndex := rand.Intn(len(possibleWorkers))
-    return &possibleWorkers[randomIndex], nil
+    return possibleWorkers[randomIndex], nil
 }
 
 type SourceFile struct {
