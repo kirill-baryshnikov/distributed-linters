@@ -11,6 +11,7 @@ import (
     "io/ioutil"
     "encoding/json"
     "os/exec"
+    "strconv"
 )
 
 const (
@@ -178,7 +179,7 @@ func startupWorker(m* Manager, worker* Worker) {
 
     binary_to_run := worker.version
 
-    exec.Command(binary_to_run, "--port", string(randomPort))
+    exec.Command(binary_to_run, "--port", strconv.Itoa(randomPort))
 
     m.mutex.Lock()
     defer m.mutex.Unlock()
