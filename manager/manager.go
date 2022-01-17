@@ -1,18 +1,18 @@
 package main
 
 import (
-    "log"
-    "fmt"
     "bytes"
-    "net/http"
-    "sync"
-    "math/rand"
-    "errors"
-    "time"
-    "io/ioutil"
     "encoding/json"
+    "errors"
+    "fmt"
+    "io/ioutil"
+    "log"
+    "math/rand"
+    "net/http"
     "os/exec"
     "strconv"
+    "sync"
+    "time"
 )
 
 const (
@@ -72,8 +72,53 @@ func (m* Manager) RollbackVersion(rollbackTo string) {
     defer m.mutex.Unlock()
 
     m.target_version = rollbackTo
-    
+
     // versionUpdateStep will take care of removing bad workers
+}
+
+func (m *Manager) run() {
+    m.startPeriodicVersionUpdates()
+    m.startPeriodicHealthchecks()
+}
+
+func (m *Manager) startPeriodicHealthchecks() {
+    time.Sleep(5 * time.Second)
+    go func() {
+        for {
+            m.healthcheckWorkers()
+            time.Sleep(1 * time.Second)
+        }
+    }()
+}
+
+func (m *Manager) healthcheckWorkers() {
+    client := http.Client{
+        Timeout: 200 * time.Millisecond,
+    }
+
+    m.mutex.Lock()
+    defer m.mutex.Unlock()
+
+    var unhealthy []int
+
+    for i, worker := range m.workers {
+        if worker.state != workerStateRunning {
+            continue
+        }
+
+        resp, err := client.Get(fmt.Sprintf("%s/healthz", worker.address))
+        if err != nil || resp.StatusCode != http.StatusOK {
+            if err != nil {
+                log.Printf("Can't healthz probe worker %s: %v", worker.address, err)
+            } else {
+                log.Printf("Healthz probe from worker %s returned an unexpected status code: %d", worker.address, resp.StatusCode)
+            }
+            unhealthy = append(unhealthy, i)
+        }
+    }
+    for i := len(unhealthy) - 1; i >= 0; i-- {
+        m.removeWorker(unhealthy[i])
+    }
 }
 
 func (m* Manager) startPeriodicVersionUpdates() {
@@ -410,8 +455,8 @@ func main() {
     var python_manager Manager = NewManager("bin/python-linter-1.0")
     var java_manager Manager = NewManager("bin/java-linter-1.0")
 
-    python_manager.startPeriodicVersionUpdates()
-    java_manager.startPeriodicVersionUpdates()
+    python_manager.run()
+    java_manager.run()
 
     handleRequests(&python_manager, &java_manager)
 }
