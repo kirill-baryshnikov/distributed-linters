@@ -1,17 +1,25 @@
 package main
 
 import (
-    "log"
-    "io/ioutil"
+    "context"
     "encoding/json"
-    "net/http"
-    "github.com/gorilla/mux"
-    "os"
-    "strconv"
+    "errors"
     "fmt"
+    "github.com/gorilla/mux"
+    "io/ioutil"
+    "log"
+    "net/http"
+    "os"
+    "os/signal"
+    "strconv"
+    "sync"
+    "syscall"
+    "time"
 )
 
 const CONTENT_LENGTH_LIMIT = 60000
+
+type shutdownFunc func()
 
 func handleLintJava(responseWriter http.ResponseWriter, request *http.Request) {
     log.Println("Endpoint hit: /lint/java")
@@ -33,7 +41,7 @@ func handleLint(responseWriter http.ResponseWriter, request *http.Request, langu
     }
 
     log.Println("Received content for linting:\n" + fileToLint.Content)
- 
+
     lintedFile := SourceFile { lintSourceCode(fileToLint.Content, language) }
     log.Println("Content after linting:\n" + lintedFile.Content)
 
@@ -44,15 +52,17 @@ func handleHealthy(responseWriter http.ResponseWriter, request *http.Request) {
     log.Println("Endpoint hit: /healthy")
 }
 
-func serve(port int) {
-    myRouter := mux.NewRouter().StrictSlash(true)
-    myRouter.HandleFunc("/lint/java", handleLintJava).Methods("POST")
-    myRouter.HandleFunc("/lint/python", handleLintPython).Methods("POST")
-    myRouter.HandleFunc("/healthy", handleHealthy).Methods("GET")
-    myRouter.HandleFunc("/shutdown", func(w http.ResponseWriter, r *http.Request){ os.Exit(0) })
+func newServer(sf shutdownFunc, port int) *http.Server {
+    router := mux.NewRouter().StrictSlash(true)
+    router.HandleFunc("/lint/java", handleLintJava).Methods("POST")
+    router.HandleFunc("/lint/python", handleLintPython).Methods("POST")
+    router.HandleFunc("/healthy", handleHealthy).Methods("GET")
+    router.HandleFunc("/shutdown", func(_ http.ResponseWriter, _ *http.Request) { sf() })
 
-    log.Println("Linter service listening.")
-    log.Fatal(http.ListenAndServe(":" + strconv.Itoa(port), myRouter))
+    return &http.Server{
+        Addr:    fmt.Sprintf(":%d", port),
+        Handler: router,
+    }
 }
 
 func main() {
@@ -67,5 +77,58 @@ func main() {
         os.Exit(1)
     }
 
-    serve(port)
+    stopCh := make(chan struct{})
+    ctx, cancel := context.WithCancel(context.Background())
+    defer cancel()
+    go func() {
+        <-stopCh
+        cancel()
+    }()
+
+    c := make(chan os.Signal, 2)
+    signal.Notify(c, syscall.SIGINT, syscall.SIGABRT, syscall.SIGTERM)
+    go func() {
+        s := <-c
+        log.Printf("Received first shutdown signal: %s. Shutting down gracefully.", s)
+        close(stopCh)
+        <-c
+        log.Printf("Received second shutdown signal: %s. Exiting.", s)
+        os.Exit(1)
+    }()
+
+    var wg sync.WaitGroup
+    defer wg.Wait()
+
+    sf := func() {
+        close(stopCh)
+    }
+    server := newServer(sf, port)
+
+    wg.Add(1)
+    go func() {
+        defer wg.Done()
+
+        log.Printf("Starting Linter server on: %s", server.Addr)
+
+        err = server.ListenAndServe()
+        if err != nil && !errors.Is(err, http.ErrServerClosed) {
+            log.Fatalf("Couldn't listen on %s: %v", server.Addr, err)
+        }
+    }()
+
+    wg.Add(1)
+    go func() {
+        defer wg.Done()
+        <-ctx.Done()
+
+        log.Println("Shutting down Linter server")
+        defer log.Println("Linter server shut down")
+
+        shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
+        defer shutdownCancel()
+        err := server.Shutdown(shutdownCtx)
+        if err != nil {
+            log.Fatalf("Couldn't terminate gracefully: %v", err)
+        }
+    }()
 }
