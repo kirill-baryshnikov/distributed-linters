@@ -2,8 +2,8 @@ package main
 
 import (
     "context"
-    "encoding/json"
     "errors"
+    "encoding/json"
     "fmt"
     "github.com/gorilla/mux"
     "io/ioutil"
@@ -48,15 +48,15 @@ func handleLint(responseWriter http.ResponseWriter, request *http.Request, langu
     json.NewEncoder(responseWriter).Encode(lintedFile)
 }
 
-func handleHealthy(responseWriter http.ResponseWriter, request *http.Request) {
-    log.Println("Endpoint hit: /healthy")
+func handleHealthz(responseWriter http.ResponseWriter, request *http.Request) {
+    log.Println("Endpoint hit: /healthz")
 }
 
 func newServer(sf shutdownFunc, port int) *http.Server {
     router := mux.NewRouter().StrictSlash(true)
     router.HandleFunc("/lint/java", handleLintJava).Methods("POST")
     router.HandleFunc("/lint/python", handleLintPython).Methods("POST")
-    router.HandleFunc("/healthy", handleHealthy).Methods("GET")
+    router.HandleFunc("/healthz", handleHealthz).Methods("GET")
     router.HandleFunc("/shutdown", func(_ http.ResponseWriter, _ *http.Request) { sf() })
 
     return &http.Server{
